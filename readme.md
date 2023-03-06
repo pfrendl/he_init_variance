@@ -1,0 +1,1 @@
+This repository demonstrates diminishing input signal variance when using the Kaiming He weight initialization method.

@@ -27,30 +27,6 @@ class Linear(nn.Module):
         return F.linear(input=x, weight=self.weight, bias=self.bias)
 
 
-def make_histogram(label: str, means: Tensor, stds: Tensor, save_dir: Path) -> None:
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7), sharey=True)
-
-    ax1.set_xlabel("Mean")
-    ax1.set_ylabel("Number of features")
-    ax1.hist(
-        x=means.tolist(),
-        bins=100,
-        color="dodgerblue",
-    )
-    ax1.grid(True, linestyle="--")
-
-    ax2.set_xlabel("Standard deviation")
-    ax2.hist(
-        x=stds.tolist(),
-        bins=100,
-        color="dodgerblue",
-    )
-    ax2.grid(True, linestyle="--")
-
-    plt.savefig(save_dir / f"histogram_{label}.png", bbox_inches="tight")
-    plt.close(fig)
-
-
 def fill_axes(
     data_arr: list[Tensor],
     ax: plt.Axes,
@@ -74,68 +50,98 @@ def fill_axes(
 
 
 def test(
-    test_name: str,
+    input: Tensor,
+    linear_layers: list[Linear],
     nonlinearity_ctr: Callable[[], nn.Module],
-    batch_size: int,
-    num_features: int,
-    depth: int,
     save_dir: Path,
 ) -> None:
-    x = torch.randn((batch_size, num_features))
+    layers: list[nn.Module] = [linear_layers[0]]
+    for layer in linear_layers[1:]:
+        layers.append(nn.Sequential(nonlinearity_ctr(), layer))
 
-    layers = [
-        Linear(num_features, num_features),
-        *[
-            nn.Sequential(nonlinearity_ctr(), Linear(num_features, num_features))
-            for _ in range(depth - 1)
-        ],
-    ]
+    for dim in [0, 1]:
+        x = input
+        means_arr = [x.mean(dim=dim)]
+        stds_arr = [x.std(dim=dim)]
+        with torch.no_grad():
+            for layer in layers:
+                x = layer(x)
+                means_arr.append(x.mean(dim=dim))
+                stds_arr.append(x.std(dim=dim))
 
-    means_arr = [x.mean(dim=0)]
-    stds_arr = [x.std(dim=0)]
-    with torch.no_grad():
-        for layer in layers:
-            x = layer(x)
-            means_arr.append(x.mean(dim=0))
-            stds_arr.append(x.std(dim=0))
+        # output layer statistics histogram
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7), sharey=True)
 
-    make_histogram(
-        label=test_name,
-        means=means_arr[-1],
-        stds=stds_arr[-1],
-        save_dir=save_dir,
-    )
+        fig.suptitle(
+            f"Output layer statistics, reduced dim={dim}, nonlinearity={nonlinearity_ctr.__name__}"
+        )
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
+        ax1.set_xlabel("Mean")
+        ax1.set_ylabel("Number of features")
+        ax1.hist(
+            x=means_arr[-1].tolist(),
+            bins=100,
+            color="dodgerblue",
+        )
+        ax1.grid(True, linestyle="--")
 
-    ax1.set_xlabel("Layers applied")
-    ax1.set_ylabel("Distribution of feature means")
-    fill_axes(data_arr=means_arr, ax=ax1)
+        ax2.set_xlabel("Standard deviation")
+        ax2.hist(
+            x=stds_arr[-1].tolist(),
+            bins=100,
+            color="dodgerblue",
+        )
+        ax2.grid(True, linestyle="--")
 
-    ax2.set_xlabel("Layers applied")
-    ax2.set_ylabel("Distribution of feature standard deviations")
-    fill_axes(data_arr=stds_arr, ax=ax2)
+        plt.savefig(
+            save_dir / f"histogram_dim{dim}_{nonlinearity_ctr.__name__}",
+            bbox_inches="tight",
+        )
+        plt.close(fig)
 
-    plt.savefig(save_dir / f"plot_{test_name}.png", bbox_inches="tight")
-    plt.close(fig)
+        # statistics by network depth line plot
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
+
+        fig.suptitle(
+            f"Statistics by network depth, reduced dim={dim}, nonlinearity={nonlinearity_ctr.__name__}"
+        )
+
+        ax1.set_xlabel("Layers applied")
+        ax1.set_ylabel("Distribution of means")
+        fill_axes(data_arr=means_arr, ax=ax1)
+
+        ax2.set_xlabel("Layers applied")
+        ax2.set_ylabel("Distribution of standard deviations")
+        fill_axes(data_arr=stds_arr, ax=ax2)
+
+        plt.savefig(
+            save_dir / f"plot_dim{dim}_{nonlinearity_ctr.__name__}.png",
+            bbox_inches="tight",
+        )
+        plt.close(fig)
 
 
 def main() -> None:
+    batch_size = 1024
+    num_features = 1024
+    depth = 1000
     save_dir = Path("outputs/")
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    tests = {
-        "featurewise_statistics_linear": nn.Identity,
-        "featurewise_statistics_relu": ReLU,
-    }
+    nonlinearity_ctrs = [
+        nn.Identity,
+        ReLU,
+        nn.SELU,
+    ]
 
-    for test_name, nonlinearity_ctr in tests.items():
+    input = torch.randn((batch_size, num_features))
+    linear_layers = [Linear(num_features, num_features) for _ in range(depth)]
+
+    for nonlinearity_ctr in nonlinearity_ctrs:
         test(
-            test_name=test_name,
+            input=input,
+            linear_layers=linear_layers,
             nonlinearity_ctr=nonlinearity_ctr,
-            batch_size=1024,
-            num_features=1024,
-            depth=100,
             save_dir=save_dir,
         )
 

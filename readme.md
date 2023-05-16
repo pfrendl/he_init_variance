@@ -1,4 +1,4 @@
-This repository demonstrates diminishing input signal variance when using the Kaiming He weight initialization method. You can read about this in more detail on my [blog](https://pfrendl.substack.com/p/diminishing-signals-with-the-he-weight).
+This repository demonstrates diminishing input signal variance when using the Kaiming He weight initialization method. You can read about this in more detail [here](https://pfrendl.substack.com/p/diminishing-signals-with-the-he-weight).
 
 When using the He approach, the featurewise variances diminish as the network depth increases:
 ![plot_featurewise_statistics_relu](https://user-images.githubusercontent.com/6968154/223205945-1bb212c5-b827-4658-9d42-adf233865062.png)
